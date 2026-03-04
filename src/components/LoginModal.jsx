@@ -16,68 +16,71 @@ export default function LoginModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage('');
+ // In your login function, after successful login, check if business exists
+const handleLogin = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setMessage('');
 
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const { data: userData, error: profileError } = await supabase
-        .from('users')
-        .select('status, role, subscription_end')
-        .eq('id', data.user.id)
-        .single();
+    // Check user status
+    const { data: userData, error: profileError } = await supabase
+      .from('users')
+      .select('*, businesses:businesses(id)') // Check if business exists
+      .eq('id', data.user.id)
+      .single();
 
-      if (profileError) throw profileError;
+    if (profileError) throw profileError;
 
-      if (userData?.status === 'pending') {
-        await supabase.auth.signOut();
-        setMessage('⏳ Your account is pending approval. Please wait for admin confirmation.');
-        setLoading(false);
-        return;
-      }
+    // Handle different statuses
+    if (userData?.status === 'pending') {
+      await supabase.auth.signOut();
+      setMessage('⏳ Your account is pending approval. Please wait for admin confirmation.');
+      return;
+    }
 
-      if (userData?.status === 'rejected') {
-        await supabase.auth.signOut();
-        setMessage('❌ Your registration was rejected. Please contact support.');
-        setLoading(false);
-        return;
-      }
+    if (userData?.status === 'rejected') {
+      await supabase.auth.signOut();
+      setMessage('❌ Your registration was rejected. Please contact support.');
+      return;
+    }
 
-      if (userData?.status === 'suspended') {
-        await supabase.auth.signOut();
-        setMessage('🚫 Your account has been suspended. Please contact support.');
-        setLoading(false);
-        return;
-      }
+    if (userData?.status === 'suspended') {
+      await supabase.auth.signOut();
+      setMessage('🚫 Your account has been suspended. Please contact support.');
+      return;
+    }
 
-      if (userData?.subscription_end && new Date(userData.subscription_end) < new Date()) {
-        await supabase.auth.signOut();
-        setMessage('⏰ Your subscription has expired. Please renew to continue.');
-        setLoading(false);
-        return;
-      }
-
-      setMessage('✅ Login successful!');
+    // ✅ Check if user is approved but hasn't registered business
+    if (userData?.status === 'approved' && userData?.role === 'business' && !userData.businesses?.length) {
+      setMessage('✅ Account approved! Redirecting to business registration...');
       setTimeout(() => {
         onClose();
-        window.location.reload();
-      }, 1000);
-
-    } catch (error) {
-      console.error('Login error:', error);
-      setMessage(`❌ ${error.message}`);
-    } finally {
-      setLoading(false);
+        window.location.href = '/business/register';
+      }, 1500);
+      return;
     }
-  };
+
+    // ✅ Normal successful login
+    setMessage('✅ Login successful!');
+    setTimeout(() => {
+      onClose();
+      window.location.reload();
+    }, 1000);
+
+  } catch (error) {
+    setMessage(`❌ ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleForgotPassword = async (e) => {
     e.preventDefault();
