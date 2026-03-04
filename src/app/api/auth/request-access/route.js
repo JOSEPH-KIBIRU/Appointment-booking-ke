@@ -1,59 +1,61 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
 export async function POST(request) {
   try {
-    const { full_name, email, phone, password, business_name, business_type } = await request.json();
+    const { full_name, email, phone, password, business_name, business_type } = await request.json()
 
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          get(name) {
+            return cookieStore.get(name)?.value
+          },
+          set(name, value, options) {
+            cookieStore.set({ name, value, ...options })
+          },
+          remove(name, options) {
+            cookieStore.set({ name, value: '', ...options })
+          },
+        },
+      }
+    )
 
-    // 1. Create user in auth.users (but set email confirmation to false)
+    // Create user in auth.users
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name,
-          phone,
+          phone: phone || '',
           business_name,
           business_type,
-          role: 'pending_business', // Special role for pending approval
         },
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/login`,
       },
-    });
+    })
 
-    if (authError) throw authError;
-
-    // 2. Create/update user profile with pending status
-    const { error: profileError } = await supabase
-      .from('users')
-      .upsert({
-        id: authData.user.id,
-        email,
-        full_name,
-        phone: phone || null,
-        role: 'pending_business',
-        status: 'pending',
-        created_at: new Date().toISOString(),
-      });
-
-    if (profileError) throw profileError;
-
-    // 3. Send notification to admin (you can implement this later)
-    // await sendAdminNotification(newRequest);
+    if (authError) {
+      return NextResponse.json(
+        { error: authError.message },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Request submitted successfully' 
-    });
+      message: 'Registration submitted for approval' 
+    })
 
   } catch (error) {
-    console.error('Request error:', error);
+    console.error('Registration error:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to submit request' },
+      { error: 'Internal server error' },
       { status: 500 }
-    );
+    )
   }
 }
