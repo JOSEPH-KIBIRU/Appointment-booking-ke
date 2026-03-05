@@ -17,17 +17,18 @@ export default function Navbar() {
   // After mounting, we have access to the theme
   useEffect(() => setMounted(true), []);
 
-  const handleSignOut = async () => {
-    setIsSigningOut(true);
-    try {
-      await signOut();
-      window.location.href = "/";
-    } catch (error) {
-      console.error("Sign out error:", error);
-    } finally {
-      setIsSigningOut(false);
-    }
-  };
+ const handleSignOut = async () => {
+  if (isSigningOut) return; // Prevent double clicks
+  
+  setIsSigningOut(true);
+  try {
+    await signOut();
+    // The redirect happens in signOut function
+  } catch (error) {
+    console.error('Sign out error:', error);
+    setIsSigningOut(false);
+  }
+};
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
