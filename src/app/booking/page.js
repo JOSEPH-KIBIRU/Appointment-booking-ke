@@ -101,99 +101,97 @@ export default function BookingPage() {
     setStep(2);
   };
 
-  const handlePaymentSuccess = async (paymentData) => {
-    try {
-      setPaymentConfirmed(true);
+ const handlePaymentSuccess = async (transactionCode) => {
+  try {
+    setPaymentConfirmed(true);
+    
+    // Format phone for database
+    const formattedPhone = guestInfo.phone.replace(/\D/g, '');
+    
+    // Try to find existing user
+    let userId = null;
+    let userEmail = guestInfo.email || null;
+    
+    // Check if user exists with this phone
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('phone', formattedPhone)
+      .maybeSingle();
 
-      // Format phone for database
-      const formattedPhone = guestInfo.phone.replace(/\D/g, "");
-
-      // Check if user exists with this phone
-      const { data: existingUser } = await supabase
-        .from("users")
-        .select("id")
-        .eq("phone", formattedPhone)
-        .maybeSingle();
-
-      let userId = null;
-
-      if (existingUser) {
-        userId = existingUser.id;
-      } else {
-        // Create new guest user
-        const { data: newUser, error: userError } = await supabase
-          .from("users")
-          .insert({
-            phone: formattedPhone,
-            full_name: guestInfo.name,
-            email: guestInfo.email || null,
-            role: "client",
-          })
-          .select()
-          .single();
-
-        if (userError) throw userError;
-        userId = newUser.id;
-      }
-
-      // Create transaction code from payment data
-      const transactionCode =
-        paymentData?.data?.CheckoutRequestID ||
-        `MPESA${Date.now().toString().slice(-8)}`;
-
-      // Create the booking ONLY AFTER payment confirmed
-      const bookingNumber = `BK-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-
-      const { data, error } = await supabase
-        .from("bookings")
-        .insert({
-          booking_number: bookingNumber,
-          client_id: userId,
-          business_id: businessId,
-          service_id: serviceId,
-          booking_date: bookingDetails.date,
-          booking_time: bookingDetails.time,
-          duration: service.duration,
-          amount: service.price,
-          status: "confirmed",
-          payment_status: "paid",
-          notes: bookingDetails.notes,
-          mpesa_receipt: transactionCode,
-          client_phone: formattedPhone,
-          client_name: guestInfo.name,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Store booking data for receipt
-      setBookingData({
-        id: data.id,
-        bookingNumber: bookingNumber,
-        businessName: business.name,
-        serviceName: service.name,
-        clientName: guestInfo.name,
-        clientPhone: guestInfo.phone,
-        amount: service.price,
-        date: new Date(bookingDetails.date).toLocaleDateString("en-KE", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }),
-        time: bookingDetails.time,
-        transactionCode: transactionCode,
-        paymentDate: new Date().toLocaleDateString("en-KE"),
-      });
-
-      setStep(3);
-    } catch (error) {
-      console.error("Error creating booking:", error);
-      setError("Failed to create booking. Please contact support.");
-      setPaymentConfirmed(false);
+    if (existingUser) {
+      userId = existingUser.id;
+      console.log('Found existing user:', userId);
+    } else {
+      // For guest bookings, we don't create a user account
+      // We'll store booking with client_phone and client_name directly
+      console.log('Guest booking - no user account created');
     }
-  };
+
+    // Create a unique booking number
+    const bookingNumber = `BK-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    
+    // Create the booking - using client_phone and client_name for guests
+    const bookingData = {
+      booking_number: bookingNumber,
+      business_id: businessId,
+      service_id: serviceId,
+      booking_date: bookingDetails.date,
+      booking_time: bookingDetails.time,
+      duration: service.duration,
+      amount: service.price,
+      status: 'confirmed',
+      payment_status: 'paid',
+      notes: bookingDetails.notes,
+      mpesa_receipt: transactionCode,
+      client_phone: formattedPhone,
+      client_name: guestInfo.name,
+    };
+
+    // Only add client_id if user exists
+    if (userId) {
+      bookingData.client_id = userId;
+    }
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .insert([bookingData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Booking error:', error);
+      throw error;
+    }
+
+    // Store booking data for receipt
+    setBookingData({
+      id: data.id,
+      bookingNumber: bookingNumber,
+      businessName: business.name,
+      serviceName: service.name,
+      clientName: guestInfo.name,
+      clientPhone: guestInfo.phone,
+      amount: service.price,
+      date: new Date(bookingDetails.date).toLocaleDateString('en-KE', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }),
+      time: bookingDetails.time,
+      transactionCode: transactionCode,
+      paymentDate: new Date().toLocaleDateString('en-KE'),
+    });
+
+    setStep(3);
+    
+  } catch (error) {
+    console.error('Error creating booking:', error);
+    setError('Failed to create booking. Please contact support.');
+    setPaymentConfirmed(false);
+  }
+};
 
   const handlePaymentError = (error) => {
     setError("Payment failed. Please try again.");
